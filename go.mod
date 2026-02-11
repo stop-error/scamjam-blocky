@@ -2,6 +2,8 @@ module github.com/0xERR0R/blocky
 
 go 1.25
 
+replace github.com/google/safebrowsing => github.com/stop-error/safebrowsing v0.1.0
+
 require (
 	github.com/0xERR0R/expiration-cache v0.1.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
@@ -85,7 +87,9 @@ require (
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/golang/mock v1.6.0 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/pprof v0.0.0-20260115054156-294ebfa9ad83 // indirect
+	github.com/google/safebrowsing v0.0.0-20190624211811-bbf0d20d26b3 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect

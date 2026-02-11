@@ -29,6 +29,9 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/sirupsen/logrus"
+
+	"github.com/google/safebrowsing"
+	safebrowser "github.com/0xERR0R/blocky/safebrowsing"
 )
 
 const defaultBlockingCleanUpInterval = 5 * time.Second
@@ -97,6 +100,8 @@ type BlockingResolver struct {
 	redisClient         *redis.Client
 	fqdnIPCache         cache.ExpiringCache[[]net.IP]
 }
+
+var safeBrowser, safeBrowserInitError = safebrowsing.NewSafeBrowser(safebrowser.GetSafeBrowsingConfig())
 
 func clientGroupsBlock(cfg config.Blocking) map[string][]string {
 	cgb := make(map[string][]string, len(cfg.ClientGroupsBlock))
@@ -409,9 +414,18 @@ func (r *BlockingResolver) handleDenylist(ctx context.Context, groupsToCheck []s
 // Resolve checks the query against the denylist and delegates to next resolver if domain is not blocked
 func (r *BlockingResolver) Resolve(ctx context.Context, request *model.Request) (*model.Response, error) {
 	ctx, logger := r.log(ctx)
+
 	groupsToCheck := r.groupsToCheckForClient(request)
 
 	if len(groupsToCheck) > 0 {
+		if safeBrowserInitError != nil {
+			logger.Warn("SafeBrowser is in error state! safebrowsing will be skipped.")
+		} else {
+			safeBrowserResult := safebrowser.InspectNameSafeBrowsing(request, safeBrowser, logger)
+			if safeBrowserResult == true {
+				return r.handleBlocked(logger, request, request.Req.Question[0], "safebrowsing")
+			}
+		}
 		handled, resp, err := r.handleDenylist(ctx, groupsToCheck, request, logger)
 		if handled {
 			return resp, err
@@ -424,6 +438,10 @@ func (r *BlockingResolver) Resolve(ctx context.Context, request *model.Request) 
 		for _, rr := range respFromNext.Res.Answer {
 			entryToCheck, tName := extractEntryToCheckFromResponse(rr)
 			if len(entryToCheck) > 0 {
+				safeBrowserResult := safebrowser.InspectNameSafeBrowsingString(entryToCheck, safeBrowser, logger)
+				if safeBrowserResult == true {
+					return r.handleBlocked(logger, request, request.Req.Question[0], "safebrowsing")
+				}
 				logger := logger.WithField("response_entry", entryToCheck)
 
 				if groups := r.matches(groupsToCheck, r.allowlistMatcher, entryToCheck); len(groups) > 0 {

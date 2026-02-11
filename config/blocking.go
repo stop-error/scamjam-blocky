@@ -10,6 +10,7 @@ import (
 type Blocking struct {
 	Denylists         map[string][]BytesSource `yaml:"denylists"`
 	Allowlists        map[string][]BytesSource `yaml:"allowlists"`
+	SafeBrowsing      bool                     `yaml:"safeBrowsing"`
 	ClientGroupsBlock map[string][]string      `yaml:"clientGroupsBlock"`
 	BlockType         string                   `default:"ZEROIP"         yaml:"blockType"`
 	BlockTTL          Duration                 `default:"6h"             yaml:"blockTTL"`
