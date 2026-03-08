@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"os"
 
 	"golang.org/x/exp/maps"
 
@@ -31,7 +32,9 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/google/safebrowsing"
+	"github.com/0xERR0R/blocky/rpc"
 	safebrowser "github.com/0xERR0R/blocky/safebrowsing"
+
 )
 
 const defaultBlockingCleanUpInterval = 5 * time.Second
@@ -129,6 +132,25 @@ func NewBlockingResolver(ctx context.Context,
 	blockHandler, err := createBlockHandler(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create block handler: %w", err)
+	}
+
+	programData := os.Getenv("ProgramData")
+	scamJamProgramDataCerts := programData + "\\ScamJam\\grpc\\dns\\tls"
+	caPEMPath := scamJamProgramDataCerts + "\\scamjam-ca.pem"
+
+	
+	for {
+		fmt.Printf("Waiting in loop for grpc TLS CA to appear in filesystem\n")
+		time.Sleep(time.Second * 2)
+		_, err = os.Stat(caPEMPath)
+
+		if err != nil {
+			fmt.Printf("TLS CA status: " + err.Error() + "\n")
+		}
+
+		if err == nil {
+			break
+		}
 	}
 
 	downloader := lists.NewDownloader(cfg.Loading.Downloads, bootstrap.NewHTTPTransport())
@@ -402,6 +424,8 @@ func (r *BlockingResolver) handleDenylist(ctx context.Context, groupsToCheck []s
 		}
 
 		if groups := r.matches(groupsToCheck, r.denylistMatcher, domain); len(groups) > 0 {
+			alert := rpc.NewDnsAlert(domain, "blocklists", strings.Join(groups, ","))
+			rpc.DnsAlertChan <- alert
 			resp, err := r.handleBlocked(logger, request, question, fmt.Sprintf("BLOCKED (%s)", strings.Join(groups, ",")))
 
 			return true, resp, err
@@ -421,11 +445,14 @@ func (r *BlockingResolver) Resolve(ctx context.Context, request *model.Request) 
 		if safeBrowserInitError != nil {
 			logger.Warn("SafeBrowser is in error state! safebrowsing will be skipped.")
 		} else {
-			safeBrowserResult := safebrowser.InspectNameSafeBrowsing(request, safeBrowser, logger)
+			safeBrowserResult, entity, category := safebrowser.InspectNameSafeBrowsing(request, safeBrowser, logger)
 			if safeBrowserResult == true {
+				alert := rpc.NewDnsAlert(entity, "safebrowsing", category)
+				rpc.DnsAlertChan <- alert
 				return r.handleBlocked(logger, request, request.Req.Question[0], "safebrowsing")
 			}
 		}
+
 		handled, resp, err := r.handleDenylist(ctx, groupsToCheck, request, logger)
 		if handled {
 			return resp, err
@@ -438,8 +465,10 @@ func (r *BlockingResolver) Resolve(ctx context.Context, request *model.Request) 
 		for _, rr := range respFromNext.Res.Answer {
 			entryToCheck, tName := extractEntryToCheckFromResponse(rr)
 			if len(entryToCheck) > 0 {
-				safeBrowserResult := safebrowser.InspectNameSafeBrowsingString(entryToCheck, safeBrowser, logger)
+				safeBrowserResult, entity, category := safebrowser.InspectNameSafeBrowsingString(entryToCheck, safeBrowser, logger)
 				if safeBrowserResult == true {
+					alert := rpc.NewDnsAlert(entity, "safebrowsing", category)
+					rpc.DnsAlertChan <- alert
 					return r.handleBlocked(logger, request, request.Req.Question[0], "safebrowsing")
 				}
 				logger := logger.WithField("response_entry", entryToCheck)
@@ -447,6 +476,9 @@ func (r *BlockingResolver) Resolve(ctx context.Context, request *model.Request) 
 				if groups := r.matches(groupsToCheck, r.allowlistMatcher, entryToCheck); len(groups) > 0 {
 					logger.WithField("groups", groups).Debugf("%s is allowlisted", tName)
 				} else if groups := r.matches(groupsToCheck, r.denylistMatcher, entryToCheck); len(groups) > 0 {
+					entity := util.ExtractDomain(request.Req.Question[0])
+					alert := rpc.NewDnsAlert(entity, "blocklists", strings.Join(groups, ","))
+					rpc.DnsAlertChan <- alert
 					return r.handleBlocked(logger, request, request.Req.Question[0], fmt.Sprintf("BLOCKED %s (%s)", tName,
 						strings.Join(groups, ",")))
 				}

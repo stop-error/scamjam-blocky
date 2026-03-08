@@ -13,6 +13,7 @@ import (
 	"github.com/0xERR0R/blocky/log"
 	"github.com/0xERR0R/blocky/server"
 	"github.com/0xERR0R/blocky/util"
+	"github.com/0xERR0R/blocky/rpc"
 
 	"github.com/spf13/cobra"
 )
@@ -71,6 +72,8 @@ func startServer(_ *cobra.Command, _ []string) error {
 
 			// Cancel background operations (periodic refresh, etc.)
 			cancelFn()
+			//Close connection to grpc server
+			rpc.ShutdownClientChan <- struct{}{}
 
 			// Create timeout context for graceful shutdown
 			stopCtx, stopCancel := context.WithTimeout(context.Background(), shutdownTimeout)

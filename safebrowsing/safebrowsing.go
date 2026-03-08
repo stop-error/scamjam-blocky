@@ -12,58 +12,58 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-
-
-func InspectNameSafeBrowsing(request *model.Request, safebrowser *safebrowsing.SafeBrowser, logger *logrus.Entry) bool {
+func InspectNameSafeBrowsing(request *model.Request, safebrowser *safebrowsing.SafeBrowser, logger *logrus.Entry) (isThreat bool, entity string, category string) {
 
 	for _, request := range request.Req.Question {
-		hostname := util.ExtractDomain(request)
+		address := util.ExtractDomain(request)
 
 		switch safebrowser { //TODO: race condition??
 		case nil:
 			logger.Info("Safe browsing will be skipped since it is disabled")
-			return false
+			return false, "", ""
 		default:
-			url := []string{hostname}
+			url := []string{address}
 			sbResponse, err := safebrowser.LookupURLs(url)
 			if err != nil {
-			logger.Warn("Error occured during safe browsing lookup:" + err.Error() + "trying to continue but response may be stale or incomplete.")
+				logger.Warn("Error occured during safe browsing lookup:" + err.Error() + "trying to continue but database may be stale or incomplete.")
 			}
 			if len(sbResponse[0]) > 0 {
-			logger.Warn("Hostname has been found on a safe browsing threat list!", sbResponse[0])
-			logger.Warn("Querry will be blocked.")
-			return true
+				logger.Info("Hostname has been found on a safe browsing threat list! ", sbResponse[0])
+				logger.Info("ThreatEntryType is ", sbResponse[0][0].ThreatDescriptor.ThreatType.String())
+				logger.Info("Querry will be blocked.")
+			return true, address, sbResponse[0][0].ThreatDescriptor.ThreatType.String()
 			} else {
 				logger.Info("Hostname was not found on any threatlists")
-				return false
+				return false, "", ""
 			}
 		}
 	}
 	logger.Error("We should not be able to get here!")
-	return false
+	return false, "", ""
 }
 
 
 
-func InspectNameSafeBrowsingString(hostname string, safebrowser *safebrowsing.SafeBrowser, logger *logrus.Entry) bool {
+func InspectNameSafeBrowsingString(address string, safebrowser *safebrowsing.SafeBrowser, logger *logrus.Entry) (isThreat bool, entity string, category string) {
 
 	switch safebrowser { //TODO: race condition??
 	case nil:
 		logger.Info("Safe browsing will be skipped since it is disabled")
-		return false
+		return false, "", ""
 	default:
-		url := []string{hostname}
+		url := []string{address}
 		sbResponse, err := safebrowser.LookupURLs(url)
 		if err != nil {
-		logger.Warn("Error occured during safe browsing lookup:" + err.Error() + "trying to continue but response may be stale or incomplete.")
+		logger.Warn("Error occured during safe browsing lookup:" + err.Error() + "trying to continue but database may be stale or incomplete.")
 		}
 		if len(sbResponse[0]) > 0 {
-		logger.Warn("Hostname has been found on a safe browsing threat list!", sbResponse[0])
-		logger.Warn("Querry will be blocked.")
-		return true
+		logger.Info("Hostname has been found on a safe browsing threat list!", sbResponse[0])
+		logger.Info("ThreatEntryType is ", sbResponse[0][0].ThreatDescriptor.ThreatType.String())
+		logger.Info("Querry will be blocked.")
+		return true, address, sbResponse[0][0].ThreatDescriptor.ThreatType.String()
 		} else {
 			logger.Info("Hostname was not found on any threatlists")
-			return false
+			return false, "", ""
 		}
 	}
 }
